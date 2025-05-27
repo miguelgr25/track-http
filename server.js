@@ -56,10 +56,16 @@ function formatRequestInfo(req) {
 }
 
 // Función para enviar email
-async function sendEmail(requestInfo, req) {
+async function sendEmail(requestInfo, req, emailTo = null) {
+  // Determinar email de destino: parámetro > query > variable de entorno > email del usuario
+  const destinationEmail = emailTo ||
+                          req.query.email ||
+                          process.env.EMAIL_TO ||
+                          process.env.EMAIL_USER;
+
   const mailOptions = {
     from: process.env.EMAIL_USER,
-    to: process.env.EMAIL_TO || process.env.EMAIL_USER,
+    to: destinationEmail,
     subject: `🔍 Nuevo acceso detectado - ${new Date().toLocaleString()}`,
     text: requestInfo,
     html: `
@@ -77,7 +83,7 @@ async function sendEmail(requestInfo, req) {
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log('Email enviado correctamente');
+    console.log(`Email enviado correctamente a: ${destinationEmail}`);
   } catch (error) {
     console.error('Error enviando email:', error);
   }
@@ -95,15 +101,19 @@ app.all('/track', async (req, res) => {
   try {
     const requestInfo = formatRequestInfo(req);
 
+    // Obtener email de destino del parámetro
+    const emailTo = req.query.email || req.body.email;
+
     // Enviar email de forma asíncrona
-    sendEmail(requestInfo, req);
+    sendEmail(requestInfo, req, emailTo);
 
     // Respuesta inmediata al cliente
     res.status(200).json({
       message: 'Petición registrada correctamente',
       timestamp: new Date().toISOString(),
       userAgent: req.get('User-Agent'),
-      ip: req.ip || req.connection.remoteAddress
+      ip: req.ip || req.connection.remoteAddress,
+      emailSentTo: emailTo || req.query.email || process.env.EMAIL_TO || process.env.EMAIL_USER
     });
 
   } catch (error) {
@@ -119,8 +129,11 @@ app.get('/pixel.png', async (req, res) => {
   try {
     const requestInfo = formatRequestInfo(req);
 
+    // Obtener email de destino del parámetro
+    const emailTo = req.query.email;
+
     // Enviar email de forma asíncrona
-    sendEmail(requestInfo, req);
+    sendEmail(requestInfo, req, emailTo);
 
     // Devolver imagen transparente 1x1 pixel
     const pixel = Buffer.from(
@@ -163,9 +176,12 @@ app.get('/', (req, res) => {
         </ul>
         <h3>Ejemplos de uso:</h3>
         <p>Para rastrear una visita, puedes usar:</p>
-        <code>https://tu-servidor.com/track</code><br><br>
+        <code>https://tu-servidor.com/track</code><br>
+        <code>https://tu-servidor.com/track?email=destino@gmail.com</code><br><br>
         <p>Para pixel invisible:</p>
-        <code>&lt;img src="https://tu-servidor.com/pixel.png" width="1" height="1" style="display:none;"&gt;</code>
+        <code>&lt;img src="https://tu-servidor.com/pixel.png?email=destino@gmail.com" width="1" height="1" style="display:none;"&gt;</code>
+        <p>Para envío POST con email:</p>
+        <code>POST /track con body: {"email": "destino@gmail.com"}</code>
 
         <hr>
         <p><small>Tu User-Agent actual: ${req.get('User-Agent')}</small></p>
