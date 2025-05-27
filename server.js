@@ -11,7 +11,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Configuración del transportador de email
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   service: 'gmail', // Puedes usar otros servicios como Outlook, Yahoo, etc.
   auth: {
     user: process.env.EMAIL_USER, // Tu email
