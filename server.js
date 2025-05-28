@@ -23,7 +23,7 @@ const transporter = nodemailer.createTransport({
 function formatRequestInfo(req) {
   const timestamp = new Date().toISOString();
   const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
-  console.log("1: ", req.body);
+  console.log("1: ", req);
   console.log("2: ", req.query);
   console.log("3: ", req.headers);
   const fingerprint = req.body?.fingerprint || req.query?.fingerprint || 'No disponible';
