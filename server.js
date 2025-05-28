@@ -12,10 +12,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Configuración del transportador de email
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Puedes usar otros servicios como Outlook, Yahoo, etc.
+  service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER, // Tu email
-    pass: process.env.EMAIL_PASS  // Tu contraseña de aplicación
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
@@ -23,13 +23,15 @@ const transporter = nodemailer.createTransport({
 function formatRequestInfo(req) {
   const timestamp = new Date().toISOString();
   const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
+  const fingerprint = req.body?.fingerprint || req.query?.fingerprint || 'No disponible';
 
   let info = `=== INFORMACIÓN DE PETICIÓN HTTP ===\n\n`;
   info += `Timestamp: ${timestamp}\n`;
   info += `Método: ${req.method}\n`;
   info += `URL: ${req.originalUrl}\n`;
   info += `IP Cliente: ${ip}\n`;
-  info += `User-Agent: ${req.get('User-Agent') || 'No disponible'}\n\n`;
+  info += `User-Agent: ${req.get('User-Agent') || 'No disponible'}\n`;
+  info += `Fingerprint: ${fingerprint}\n\n`;
 
   info += `=== TODAS LAS CABECERAS HTTP ===\n\n`;
   Object.entries(req.headers).forEach(([key, value]) => {
@@ -57,11 +59,10 @@ function formatRequestInfo(req) {
 
 // Función para enviar email
 async function sendEmail(requestInfo, req, emailTo = null) {
-  // Determinar email de destino: parámetro > query > variable de entorno > email del usuario
   const destinationEmail = emailTo ||
-                          req.query.email ||
-                          process.env.EMAIL_TO ||
-                          process.env.EMAIL_USER;
+    req.query.email ||
+    process.env.EMAIL_TO ||
+    process.env.EMAIL_USER;
 
   const mailOptions = {
     from: process.env.EMAIL_USER,
@@ -89,53 +90,41 @@ async function sendEmail(requestInfo, req, emailTo = null) {
   }
 }
 
-// Middleware para capturar todas las peticiones
+// Middleware para registrar peticiones
 app.use((req, res, next) => {
-  // Registrar la petición
   console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl} - ${req.get('User-Agent')}`);
   next();
 });
 
-// Ruta principal del rastreador
+// Ruta principal de rastreo
 app.all('/track', async (req, res) => {
   try {
     const requestInfo = formatRequestInfo(req);
-
-    // Obtener email de destino del parámetro
     const emailTo = req.query.email || req.body.email;
-
-    // Enviar email de forma asíncrona
     sendEmail(requestInfo, req, emailTo);
 
-    // Respuesta inmediata al cliente
     res.status(200).json({
       message: 'Petición registrada correctamente',
       timestamp: new Date().toISOString(),
       userAgent: req.get('User-Agent'),
       ip: req.ip || req.connection.remoteAddress,
-      emailSentTo: emailTo || req.query.email || process.env.EMAIL_TO || process.env.EMAIL_USER
+      fingerprint: req.body.fingerprint || req.query.fingerprint || null,
+      emailSentTo: emailTo || process.env.EMAIL_TO || process.env.EMAIL_USER
     });
 
   } catch (error) {
     console.error('Error procesando la petición:', error);
-    res.status(500).json({
-      error: 'Error interno del servidor'
-    });
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
-// Ruta para pixel de seguimiento (imagen transparente 1x1)
+// Ruta para pixel de seguimiento
 app.get('/pixel.png', async (req, res) => {
   try {
     const requestInfo = formatRequestInfo(req);
-
-    // Obtener email de destino del parámetro
     const emailTo = req.query.email;
-
-    // Enviar email de forma asíncrona
     sendEmail(requestInfo, req, emailTo);
 
-    // Devolver imagen transparente 1x1 pixel
     const pixel = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
       'base64'
@@ -157,7 +146,7 @@ app.get('/pixel.png', async (req, res) => {
   }
 });
 
-// Ruta de prueba
+// Página de inicio con script de fingerprint
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -175,16 +164,33 @@ app.get('/', (req, res) => {
             <li><strong>/pixel.png</strong> - Pixel de seguimiento invisible</li>
         </ul>
         <h3>Ejemplos de uso:</h3>
-        <p>Para rastrear una visita, puedes usar:</p>
+        <p>Para rastrear una visita:</p>
         <code>https://tu-servidor.com/track</code><br>
         <code>https://tu-servidor.com/track?email=destino@gmail.com</code><br><br>
-        <p>Para pixel invisible:</p>
+        <p>Pixel invisible:</p>
         <code>&lt;img src="https://tu-servidor.com/pixel.png?email=destino@gmail.com" width="1" height="1" style="display:none;"&gt;</code>
-        <p>Para envío POST con email:</p>
+        <p>POST con email:</p>
         <code>POST /track con body: {"email": "destino@gmail.com"}</code>
 
         <hr>
         <p><small>Tu User-Agent actual: ${req.get('User-Agent')}</small></p>
+
+        <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+        <script>
+          FingerprintJS.load().then(fp => {
+            fp.get().then(result => {
+              const fingerprint = result.visitorId;
+
+              fetch('/track', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fingerprint: fingerprint })
+              }).then(res => res.json())
+                .then(data => console.log('Enviado:', data))
+                .catch(err => console.error('Error:', err));
+            });
+          });
+        </script>
     </body>
     </html>
   `);
