@@ -176,21 +176,26 @@ app.get('/', (req, res) => {
         <p><small>Tu User-Agent actual: ${req.get('User-Agent')}</small></p>
 
         <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
-        <script>
-          FingerprintJS.load().then(fp => {
-            fp.get().then(result => {
-              const fingerprint = result.visitorId;
+<script>
+  (async () => {
+    try {
+      const fp = await FingerprintJS.load();
+      const result = await fp.get();
+      const fingerprint = result.visitorId;
 
-              fetch('/track', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fingerprint: fingerprint })
-              }).then(res => res.json())
-                .then(data => console.log('Enviado:', data))
-                .catch(err => console.error('Error:', err));
-            });
-          });
-        </script>
+      console.log('Fingerprint generado:', fingerprint); // ✅ Verifica esto en la consola
+
+      await fetch('/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint })
+      });
+
+    } catch (err) {
+      console.error('Error al generar fingerprint o enviar:', err);
+    }
+  })();
+</script>
     </body>
     </html>
   `);
